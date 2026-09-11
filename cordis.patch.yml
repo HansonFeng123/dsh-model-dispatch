@@ -1,0 +1,17 @@
+# dsh-model-dispatch bundle patch: inserts this plugin into a profile's layer stack.
+#
+# Applied automatically when the package is installed via `dsh plugin add`.
+# Later layers (the profile's own cordis.patch.yml, --patch overlays) override
+# these rows by id.
+
+# 挂载插件行
+- insert:
+    - id: model-dispatch
+      name: dsh-model-dispatch
+      config:
+        # 模式默认关闭：由用户通过药丸 / /mdisp on / 设置页显式开启
+        enabled: false
+        # 歧义/信息不足时向用户提问确认
+        askWhenAmbiguous: true
+        # 最大并行子代理数 (1-8)
+        maxParallel: 4
