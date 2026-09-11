@@ -21,6 +21,19 @@ export const inject = [
   'webServer',    // Client RPC HTTP 路由
 ]
 
+const RouteEntry = z.object({
+  type: z.string(),
+  difficulty: z.string(),
+  provider: z.string(),
+  model: z.string(),
+})
+
+const FallbackSchema = z.object({
+  high: z.object({ provider: z.string().default(''), model: z.string().default('') }).default({}),
+  medium: z.object({ provider: z.string().default(''), model: z.string().default('') }).default({}),
+  low: z.object({ provider: z.string().default(''), model: z.string().default('') }).default({}),
+}).default({})
+
 export const Config = z.object({
   enabled: z.boolean().default(false),
   askWhenAmbiguous: z.boolean().default(true),
@@ -28,17 +41,16 @@ export const Config = z.object({
   taskTypes: z.array(z.string()).default([
     'architecture', 'coding', 'ui-design', 'bugfix', 'review', 'docs', 'testing', 'research',
   ]),
-  routes: z.array(z.object({
-    type: z.string(),
-    difficulty: z.string(),
-    provider: z.string(),
-    model: z.string(),
+  routes: z.array(RouteEntry).default([]),
+  fallback: FallbackSchema,
+  // 预设：一套组合的模型矩阵存档；切换预设 = 把预设内容拷贝到 routes/fallback
+  presets: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    routes: z.array(RouteEntry).default([]),
+    fallback: FallbackSchema,
   })).default([]),
-  fallback: z.object({
-    high: z.object({ provider: z.string().default(''), model: z.string().default('') }).default({}),
-    medium: z.object({ provider: z.string().default(''), model: z.string().default('') }).default({}),
-    low: z.object({ provider: z.string().default(''), model: z.string().default('') }).default({}),
-  }).default({}),
+  activePreset: z.string().default(''),
 })
 
 const TASK_TYPES_DEFAULT = ['architecture', 'coding', 'ui-design', 'bugfix', 'review', 'docs', 'testing', 'research']
@@ -481,7 +493,14 @@ export function apply(ctx, config = {}) {
   // 读取配置的优先顺序：settings 已保存值 > cordis.patch.yml config > 默认值
   function getConfig() {
     if (settingsScope) {
-      try { return settingsScope.get() } catch (e) { /* fall through */ }
+      try {
+        const v = settingsScope.get()
+        if (v) {
+          if (!Array.isArray(v.presets)) v.presets = []
+          if (typeof v.activePreset !== 'string') v.activePreset = ''
+          return v
+        }
+      } catch (e) { /* fall through */ }
     }
     return {
       enabled: config.enabled ?? false,
@@ -490,6 +509,28 @@ export function apply(ctx, config = {}) {
       taskTypes: config.taskTypes || TASK_TYPES_DEFAULT,
       routes: config.routes || [],
       fallback: config.fallback || {},
+      presets: [],
+      activePreset: '',
+    }
+  }
+
+  // ── 预设辅助 ──
+  function findPreset(cfg, idOrName) {
+    const presets = Array.isArray(cfg.presets) ? cfg.presets : []
+    const key = String(idOrName || '').trim()
+    let hit = presets.find((p) => p && p.id === key)
+    if (!hit) hit = presets.find((p) => p && p.name === key)
+    if (!hit) {
+      const n = parseInt(key, 10)
+      if (!Number.isNaN(n) && n >= 1 && n <= presets.length) hit = presets[n - 1]
+    }
+    return hit || null
+  }
+
+  function presetSnapshot(cfg) {
+    return {
+      routes: JSON.parse(JSON.stringify(Array.isArray(cfg.routes) ? cfg.routes : [])),
+      fallback: JSON.parse(JSON.stringify(cfg.fallback || {})),
     }
   }
 
@@ -508,24 +549,29 @@ export function apply(ctx, config = {}) {
         '信息不足或有歧义的任务（或置 needsClarification=true）会先向用户提问确认。' +
         '返回每个任务的模型、状态与精简结果摘要。琐碎步骤不要调用本工具。',
       parameters: {
-        tasks: {
-          type: 'array',
-          required: true,
-          description: '要派发的子任务列表；互相独立的任务放在同一次调用里并行执行',
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              title: { type: 'string', required: true, description: '任务短标题' },
-              description: { type: 'string', required: true, description: '任务完整描述：目标、约束、涉及文件路径' },
-              context: { type: 'string', description: '可选背景：架构方案要点、相关文件、接口约定等' },
-              type: { type: 'string', description: '任务类型，省略则自动评估' },
-              difficulty: { type: 'string', description: 'high/medium/low，省略则自动评估' },
-              needsClarification: { type: 'boolean', description: '认为该任务信息不足、需要用户确认时置 true' },
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          tasks: {
+            type: 'array',
+            description: '要派发的子任务列表；互相独立的任务放在同一次调用里并行执行',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                title: { type: 'string', description: '任务短标题' },
+                description: { type: 'string', description: '任务完整描述：目标、约束、涉及文件路径' },
+                context: { type: 'string', description: '可选背景：架构方案要点、相关文件、接口约定等' },
+                type: { type: 'string', description: '任务类型，省略则自动评估' },
+                difficulty: { type: 'string', enum: ['high', 'medium', 'low'], description: '难度，省略则自动评估' },
+                needsClarification: { type: 'boolean', description: '认为该任务信息不足、需要用户确认时置 true' },
+              },
+              required: ['title', 'description'],
             },
           },
+          note: { type: 'string', description: '给派发系统的补充说明' },
         },
-        note: { type: 'string', description: '给派发系统的补充说明' },
+        required: ['tasks'],
       },
       timeoutMs: 900000,
       output: {
@@ -551,6 +597,7 @@ export function apply(ctx, config = {}) {
               },
             },
             note: { type: 'string' },
+            error: { type: 'string' },
           },
         },
         render(args, value) {
@@ -564,13 +611,23 @@ export function apply(ctx, config = {}) {
             if (r.summary) lines.push('  结果: ' + r.summary)
           }
           if (value && value.note) lines.push('总备注: ' + value.note)
+          if (value && value.error) lines.push('错误: ' + value.error)
           return [{ type: 'text', text: lines.join('\n') }]
         },
       },
       async execute(args, exec) {
         const cfg = getConfig()
         const tasks = args && Array.isArray(args.tasks) ? args.tasks : []
-        if (!tasks.length) return { results: [], note: 'tasks 为空：请至少提供一个任务' }
+        if (!tasks.length) {
+          // 参数为空时返回可自纠的错误（含示例），避免模型用相同空调用反复重试
+          return {
+            results: [],
+            error: 'INVALID_ARGUMENTS',
+            note: 'tasks 为空或缺失。必须以 {"tasks": [...]} 传参，例如：' +
+              '{"tasks":[{"title":"修复登录页","description":"src/views/Login.vue 的表单校验在邮箱为空时未提示，补上校验与错误文案","type":"bugfix","difficulty":"low"}]}。' +
+              '多个独立任务放进同一个 tasks 数组并行执行；琐碎任务不要调用本工具，直接自己做。',
+          }
+        }
         const agent = exec && exec.agent
         if (!agent) return { results: [], note: '无法确定调用方会话，拒绝派发' }
         if (subagents === undefined || typeof subagents.start !== 'function') {
@@ -687,7 +744,8 @@ export function apply(ctx, config = {}) {
       description: '模型分工模式：on / off / status（仅影响当前会话）',
       handler(inv) {
         const cfg = getConfig()
-        const arg = (inv.rawInput || '').trim().toLowerCase()
+        const raw = (inv.rawInput || '').trim()
+        const arg = raw.toLowerCase()
         const sid = inv.agent ? inv.agent.id : undefined
         if (arg === 'on' || arg === 'off') {
           sessionModes.set(sid, arg === 'on')
@@ -696,7 +754,38 @@ export function apply(ctx, config = {}) {
             text: '本会话模型分工模式已' + (arg === 'on' ? '开启' : '关闭') + '（也可点输入框左侧的「分工」药丸切换）',
           }
         }
-        return { kind: 'success', text: '本会话模型分工模式：' + (modeFor(cfg, sid) ? '开启' : '关闭') + '。用法：/mdisp on、/mdisp off' }
+        if (arg === 'preset' || arg.startsWith('preset ')) {
+          const presets = Array.isArray(cfg.presets) ? cfg.presets : []
+          const key = raw.slice(6).trim()
+          if (!key) {
+            if (!presets.length) return { kind: 'success', text: '暂无预设。在 设置 → 模型分工 里「另存当前配置为预设」，或用 /mdisp preset <序号|名称> 切换。' }
+            const lines = presets.map((p, i) => (p.id === cfg.activePreset ? ' → ' : '   ') + (i + 1) + '. ' + p.name)
+            return { kind: 'success', text: '预设列表（→ 为当前生效）：\n' + lines.join('\n') + '\n切换：/mdisp preset <序号|名称>' }
+          }
+          const hit = findPreset(cfg, key)
+          if (!hit) return { kind: 'error', text: '找不到预设「' + key + '」。用 /mdisp preset 查看列表。' }
+          if (hit.id === cfg.activePreset) return { kind: 'success', text: '预设「' + hit.name + '」已是当前生效预设。' }
+          // 同步 apply 逻辑：拷贝预设内容到生效配置（此处直接写 settings，不走 HTTP）
+          const p = presets.find((x) => x && x.id === hit.id)
+          const taskTypes = Array.isArray(cfg.taskTypes) ? cfg.taskTypes.slice() : []
+          for (const r of (p && p.routes) || []) {
+            if (r && r.type && taskTypes.indexOf(r.type) === -1) taskTypes.push(r.type)
+          }
+          if (settingsScope && typeof settingsScope.update === 'function') {
+            settingsScope.update({
+              routes: JSON.parse(JSON.stringify((p && p.routes) || [])),
+              fallback: {
+                high: cleanRoute(p && p.fallback && p.fallback.high) || {},
+                medium: cleanRoute(p && p.fallback && p.fallback.medium) || {},
+                low: cleanRoute(p && p.fallback && p.fallback.low) || {},
+              },
+              taskTypes,
+              activePreset: hit.id,
+            }).catch((e) => console.error('[model-dispatch] 预设切换失败: ' + errText(e)))
+          }
+          return { kind: 'success', text: '已切换到预设「' + hit.name + '」。路由表立即生效（新会话/下一步请求按新表注入）。' }
+        }
+        return { kind: 'success', text: '本会话模型分工模式：' + (modeFor(cfg, sid) ? '开启' : '关闭') + '。用法：/mdisp on、/mdisp off、/mdisp preset [序号|名称]' }
       },
     })
   }
@@ -815,6 +904,122 @@ export function apply(ctx, config = {}) {
           res.end(JSON.stringify({ ok: true, enabled }))
         } catch (e) {
           res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, error: errText(e) }))
+        }
+      },
+    })
+
+    // POST /api/mdisp/preset — 预设管理 { op, id?, name?, preset? }
+    // op: save(另存) | overwrite(覆盖) | apply(应用) | rename | delete
+    webServer.register({
+      kind: 'exact',
+      path: '/api/mdisp/preset',
+      handler: async (req, res) => {
+        try {
+          let body = ''
+          for await (const chunk of req) body += chunk
+          const data = JSON.parse(body || '{}')
+          const op = String(data.op || '')
+          const cfg = getConfig()
+          const presets = Array.isArray(cfg.presets) ? cfg.presets : []
+          const built = await buildCatalog(llm, settings)
+
+          if (op === 'save') {
+            // 另存当前生效配置为新预设
+            const name = String(data.name || '').trim()
+            if (!name) throw new Error('预设名称不能为空')
+            if (presets.some((p) => p && p.name === name)) throw new Error('已存在同名预设：' + name)
+            if (presets.length >= 20) throw new Error('预设最多 20 个')
+            const snap = presetSnapshot(cfg)
+            validateConfig({ taskTypes: cfg.taskTypes, routes: snap.routes, fallback: snap.fallback }, built.catalog)
+            const entry = {
+              id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+              name,
+              routes: snap.routes,
+              fallback: {
+                high: cleanRoute(snap.fallback && snap.fallback.high) || {},
+                medium: cleanRoute(snap.fallback && snap.fallback.medium) || {},
+                low: cleanRoute(snap.fallback && snap.fallback.low) || {},
+              },
+            }
+            presets.push(entry)
+            await settingsScope.update({ presets, activePreset: entry.id })
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true, preset: entry }))
+            return
+          }
+
+          if (op === 'overwrite') {
+            // 用当前生效配置覆盖指定预设
+            const p = findPreset(cfg, data.id)
+            if (!p) throw new Error('预设不存在')
+            const snap = presetSnapshot(cfg)
+            validateConfig({ taskTypes: cfg.taskTypes, routes: snap.routes, fallback: snap.fallback }, built.catalog)
+            p.routes = snap.routes
+            p.fallback = {
+              high: cleanRoute(snap.fallback && snap.fallback.high) || {},
+              medium: cleanRoute(snap.fallback && snap.fallback.medium) || {},
+              low: cleanRoute(snap.fallback && snap.fallback.low) || {},
+            }
+            await settingsScope.update({ presets })
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true, preset: p }))
+            return
+          }
+
+          if (op === 'apply') {
+            // 应用预设：拷贝内容到生效配置；矩阵里出现未知任务类型时并入 taskTypes
+            const p = findPreset(cfg, data.id)
+            if (!p) throw new Error('预设不存在')
+            validateConfig({ taskTypes: cfg.taskTypes.concat((p.routes || []).map((r) => r.type)), routes: p.routes, fallback: p.fallback }, built.catalog)
+            const taskTypes = Array.isArray(cfg.taskTypes) ? cfg.taskTypes.slice() : []
+            for (const r of p.routes || []) {
+              if (r && r.type && taskTypes.indexOf(r.type) === -1) taskTypes.push(r.type)
+            }
+            await settingsScope.update({
+              routes: JSON.parse(JSON.stringify(p.routes || [])),
+              fallback: {
+                high: cleanRoute(p.fallback && p.fallback.high) || {},
+                medium: cleanRoute(p.fallback && p.fallback.medium) || {},
+                low: cleanRoute(p.fallback && p.fallback.low) || {},
+              },
+              taskTypes,
+              activePreset: p.id,
+            })
+            sessionModes.clear() // 让所有会话立即按新路由表注入
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true, preset: p }))
+            return
+          }
+
+          if (op === 'rename') {
+            const p = findPreset(cfg, data.id)
+            if (!p) throw new Error('预设不存在')
+            const name = String(data.name || '').trim()
+            if (!name) throw new Error('预设名称不能为空')
+            if (presets.some((x) => x && x !== p && x.name === name)) throw new Error('已存在同名预设：' + name)
+            p.name = name
+            await settingsScope.update({ presets })
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true, preset: p }))
+            return
+          }
+
+          if (op === 'delete') {
+            const p = findPreset(cfg, data.id)
+            if (!p) throw new Error('预设不存在')
+            const nextPresets = presets.filter((x) => x !== p)
+            const patch = { presets: nextPresets }
+            if (cfg.activePreset === p.id) patch.activePreset = ''
+            await settingsScope.update(patch)
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true }))
+            return
+          }
+
+          throw new Error('未知操作：' + op)
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ ok: false, error: errText(e) }))
         }
       },

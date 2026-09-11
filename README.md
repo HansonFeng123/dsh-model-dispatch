@@ -105,6 +105,31 @@ rm -rf ~/.dsh/profiles/web/node_modules/dsh-model-dispatch
 3. 模式开启后，系统提示词会注入分工策略与当前路由表（`model-dispatch:policy` 段）；主代理随后会：拆解任务 → 评估类型/难度 →（歧义则先 `ask_user_question` 确认）→ 调用 `dispatch_task` 派发。你也可以直接命令主代理「用 dispatch_task 把 X 和 Y 并行做掉」。
 4. 关闭：再点一次药丸，或 `/mdisp off`。
 
+## 预设（v1.1.0 新增）
+
+一个预设 = 一套完整的「类型×难度矩阵 + 通用回退」存档。适合「便宜日常」和「强力攻坚」等多套组合来回切换。
+
+### 管理预设（设置 → 模型分工 → 预设卡片）
+
+- **把当前配置另存为预设**：输入名称 → 点按钮。保存后该预设立即成为「使用中」。
+- **应用**：切换到该预设（把预设的矩阵+回退拷贝为当前生效配置，立即生效；预设里出现而当前没有的任务类型会自动并入）。
+- **用当前配置覆盖**：把当前矩阵+回退写回该预设。
+- **重命名**：在下方「重命名为」框输入新名字，再点某条预设的「重命名」。
+- **删除**：删除该预设（不影响当前生效配置）。
+
+### 快速切换预设
+
+- **输入框药丸**：「分工 开/关」按钮右侧多了一段当前预设名，点它就轮换到下一个预设（无预设时置灰，悬停有提示）。
+- **命令**：
+  - `/mdisp preset` —— 列出全部预设（→ 标记当前生效）
+  - `/mdisp preset 2` 或 `/mdisp preset 强力攻坚` —— 按序号或名称切换
+
+### 语义说明
+
+- 预设存的是**矩阵+回退的副本**；「应用」是拷贝而非引用。应用之后再改矩阵，预设不会跟着变（需要「用当前配置覆盖」回写）。
+- 当前生效配置如果和某个预设内容一致，设置页和药丸会以 `activePreset` 标记「使用中」；手动改过矩阵后标记仍在（表示「源自该预设」），以设置页内容为准。
+- 最多 20 个预设，名称不可重复。
+
 ## 配置说明（设置页「模型分工」）
 
 - **新会话默认启用该模式**：全局开关，作为新会话模式默认值。**出厂默认关闭**（模式是显式选择，不静默消耗 token）；勾选并保存后才默认开启。
@@ -178,7 +203,7 @@ dsh --profile web plugin list
 **排查顺序**：
 1. 确认**重启过 DSH Web**（安装后不重启不加载）
 2. 确认插件在 bundles 里：查看 `~/.dsh/profiles/web/package.json` 的 `dsh.profile.bundles` 数组是否有 `"dsh-model-dispatch"`（`dsh plugin add` 会自动加；手动复制方式需要自己加）
-3. 确认版本 ≥ v1.0.2（v1.0.0 客户端缺 `apply` 导出；v1.0.1 的 schema 用了 schemastery 不存在的 `.optional()` 导致启动崩溃）
+3. 确认版本 ≥ v1.0.3（v1.0.0 客户端缺 `apply` 导出；v1.0.1 的 schema 用了 schemastery 不存在的 `.optional()` 导致启动崩溃；v1.0.2 的客户端访问了未注入的 `ctx.styles` 导致浏览器端加载失败）
 4. 打开浏览器开发者工具（F12）看 Console 是否有 `dsh-model-dispatch` 相关报错
 
 ### 问题 4：配置保存后重启丢失
@@ -221,6 +246,15 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh
 
 ## 版本历史
 
+- **v1.1.1**（2026-09-11）
+  - 修复 `dispatch_task` 参数 schema：静态 `tools.register` 走标准 JSON Schema（`type:'object'` + `properties` + `required` 数组），此前误用动态插件专有的隐式映射 DSL，导致模型看到畸形 schema、只能传 `{}` 并反复空调用（截图中的 `dispatch_task × 5` 重复即由此而来）
+  - tasks 为空时返回带 JSON 示例的自纠错误（`error: INVALID_ARGUMENTS`），模型收到后知道如何正确传参，不再盲目重试
+  - `difficulty` 增加 `enum: ['high','medium','low']` 约束，减少模型乱填
+- **v1.1.0**（2026-09-11）
+  - 新增预设功能：一套组合的模型矩阵存档（另存 / 应用 / 覆盖 / 重命名 / 删除，最多 20 个）
+  - 「分工」药丸变为两段：左半开/关模式，右半显示当前预设名、点击轮换预设
+  - 新增 `/mdisp preset [序号|名称]` 命令查看与切换预设
+  - 运行卡显示当前预设
 - **v1.0.3**（2026-09-11）
   - 修复浏览器端加载失败：`cannot get property "styles" without inject` —— 静态 client bundle 不能访问 `ctx.styles`（需声明 inject），样式改回带 id 的幂等 `<style>` DOM 注入（与 dsh-mood-light 相同的标准做法）
 - **v1.0.2**（2026-09-11）

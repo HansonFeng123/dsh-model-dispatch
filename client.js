@@ -70,6 +70,10 @@ window.__ModuleLoader__.load({
       var status = sst[0], setStatus = sst[1];
       var it = React.useState('');
       var newType = it[0], setNewType = it[1];
+      var pit = React.useState('');
+      var presetName = pit[0], setPresetName = pit[1];
+      var rit = React.useState('');
+      var renameValue = rit[0], setRenameValue = rit[1];
 
       React.useEffect(function () {
         var alive = true;
@@ -162,6 +166,53 @@ window.__ModuleLoader__.load({
         });
       }
 
+      // ---------- 预设管理 ----------
+      function presetOp(op, args, doneMsg) {
+        setStatus('处理中…');
+        fetch('/api/mdisp/preset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.assign({ op: op }, args || {})),
+        }).then(function (r) { return r.json() }).then(function (v) {
+          if (v && v.ok) {
+            setStatus(doneMsg || '完成 ✔');
+            return fetch('/api/mdisp/state').then(function (r2) { return r2.json() }).then(function (nv) {
+              if (nv && nv.config) nv.draft = JSON.parse(JSON.stringify(nv.config));
+              setState(nv);
+            });
+          }
+          setStatus('操作失败：' + (v && v.error ? v.error : '未知错误'));
+        }).catch(function (err) {
+          setStatus('操作失败：' + errText(err));
+        });
+      }
+
+      function savePreset() {
+        var name = presetName.trim();
+        if (!name) { setStatus('请先输入预设名称'); return; }
+        presetOp('save', { name: name }, '已另存为预设「' + name + '」并生效 ✔');
+        setPresetName('');
+      }
+
+      function overwritePreset(id) {
+        presetOp('overwrite', { id: id }, '已用当前配置覆盖预设 ✔');
+      }
+
+      function applyPreset(id) {
+        presetOp('apply', { id: id }, '预设已应用 ✔（保存草稿已丢弃，以预设为准）');
+      }
+
+      function renamePreset(id) {
+        var name = (renameValue || '').trim();
+        if (!name) { setStatus('请先在「重命名为」框输入新名称'); return; }
+        presetOp('rename', { id: id, name: name }, '预设已重命名为「' + name + '」✔');
+        setRenameValue('');
+      }
+
+      function deletePreset(id) {
+        presetOp('delete', { id: id }, '预设已删除 ✔');
+      }
+
       var tableRows = draft.taskTypes.map(function (t) {
         return React.createElement('tr', { key: t }, [
           React.createElement('td', { key: 't' }, t + (TYPE_LABEL(t))),
@@ -234,6 +285,35 @@ window.__ModuleLoader__.load({
           React.createElement('button', { key: 'b', className: 'mdisp-btn', onClick: reload }, '刷新目录'),
         ]),
 
+        React.createElement('div', { key: 'presets', className: 'mdisp-card' }, [
+          React.createElement('div', { key: 't', className: 'mdisp-title' }, '预设（一套组合的模型矩阵）'),
+          React.createElement('div', { key: 'hint', className: 'mdisp-muted' },
+            '「另存为预设」把当前矩阵+回退存成一份预设；「应用」切换到该预设（立即生效）。「使用中」= 当前生效配置与该预设一致。' +
+            '也可以在输入框用 /mdisp preset 查看列表、/mdisp preset <序号|名称> 切换；输入框的「分工」药丸右侧可以快速轮换预设。'),
+          React.createElement('div', { key: 'save', className: 'mdisp-row' }, [
+            React.createElement('input', { key: 'i', className: 'mdisp-input', placeholder: '预设名称（如：便宜日常 / 强力攻坚）', value: presetName, onChange: function (ev) { setPresetName(ev.target.value); } }),
+            React.createElement('button', { key: 'b', className: 'mdisp-btn', onClick: savePreset }, '把当前配置另存为预设'),
+          ]),
+          React.createElement('div', { key: 'list', className: 'mdisp-wrap' },
+            (draft.presets || []).length === 0
+              ? React.createElement('div', { className: 'mdisp-muted' }, '还没有预设。先在上方输入名称并点「另存为预设」。')
+              : (draft.presets || []).map(function (p, idx) {
+                  var isActive = p.id === draft.activePreset;
+                  return React.createElement('div', { key: p.id, className: 'mdisp-row', style: { borderBottom: '1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.2))', paddingBottom: '6px' } }, [
+                    React.createElement('span', { key: 'n', style: { minWidth: '140px', fontWeight: isActive ? 600 : 400 } },
+                      (idx + 1) + '. ' + p.name + (isActive ? '（使用中）' : '')),
+                    React.createElement('button', { key: 'a', className: 'mdisp-btn', disabled: isActive, onClick: function () { applyPreset(p.id); } }, isActive ? '使用中' : '应用'),
+                    React.createElement('button', { key: 'o', className: 'mdisp-btn', onClick: function () { overwritePreset(p.id); } }, '用当前配置覆盖'),
+                    React.createElement('button', { key: 'r', className: 'mdisp-btn', onClick: function () { renamePreset(p.id); } }, '重命名'),
+                    React.createElement('button', { key: 'd', className: 'mdisp-btn', onClick: function () { deletePreset(p.id); } }, '删除'),
+                  ]);
+                })
+          ),
+          React.createElement('div', { key: 'rename', className: 'mdisp-row' }, [
+            React.createElement('input', { key: 'i', className: 'mdisp-input', placeholder: '重命名为（点某条预设的「重命名」时使用）', value: renameValue, onChange: function (ev) { setRenameValue(ev.target.value); } }),
+          ]),
+        ]),
+
         React.createElement('div', { key: 'foot', className: 'mdisp-row' }, [
           React.createElement('button', { key: 's', className: 'mdisp-btn', onClick: save }, '保存配置'),
           React.createElement('span', { key: 'st', className: 'mdisp-status' }, status),
@@ -259,11 +339,14 @@ window.__ModuleLoader__.load({
       if (!state) return React.createElement('div', { className: 'mdisp-muted' }, '模型分工：加载中…');
       var cfg = state.config || {};
       var routeCount = Array.isArray(cfg.routes) ? cfg.routes.length : 0;
+      var presets = Array.isArray(cfg.presets) ? cfg.presets : [];
+      var activePreset = '';
+      for (var pi = 0; pi < presets.length; pi++) { if (presets[pi] && presets[pi].id === cfg.activePreset) activePreset = presets[pi].name; }
       return React.createElement('div', { className: 'mdisp-wrap' }, [
         React.createElement('div', { key: 't', className: 'mdisp-title' }, '模型分工（Model Dispatch）'),
         React.createElement('div', { key: 'a', className: 'mdisp-muted' }, '评估任务类型与难度并派发给不同模型；独立任务并行执行、重复任务合并、歧义任务先向用户确认。'),
-        React.createElement('div', { key: 'b' }, '全局默认：' + (cfg.enabled ? '开启' : '关闭') + ' · 定点路由 ' + routeCount + ' 条 · 最大并行 ' + (cfg.maxParallel || 4) + ' · 澄清提问 ' + (cfg.askWhenAmbiguous ? '开' : '关')),
-        React.createElement('div', { key: 'c', className: 'mdisp-muted' }, '本会话开关：/mdisp on · /mdisp off；模型矩阵在 设置 → 模型分工 配置。主代理在模式开启时会通过 dispatch_task 工具派发任务。'),
+        React.createElement('div', { key: 'b' }, '全局默认：' + (cfg.enabled ? '开启' : '关闭') + ' · 当前预设：' + (activePreset || '默认（未保存为预设）') + ' · 定点路由 ' + routeCount + ' 条 · 最大并行 ' + (cfg.maxParallel || 4) + ' · 澄清提问 ' + (cfg.askWhenAmbiguous ? '开' : '关')),
+        React.createElement('div', { key: 'c', className: 'mdisp-muted' }, '本会话开关：/mdisp on · /mdisp off；预设：/mdisp preset [序号|名称]；模型矩阵在 设置 → 模型分工 配置。主代理在模式开启时会通过 dispatch_task 工具派发任务。'),
         React.createElement('button', { key: 'd', className: 'mdisp-btn', onClick: function () {
           fetch('/api/mdisp/state').then(function (r) { return r.json() }).then(function (v) { setState(v); }).catch(function () {});
         } }, '刷新'),
@@ -295,21 +378,37 @@ window.__ModuleLoader__.load({
       var mode = st[0], setMode = st[1];
       var bt = React.useState(false);
       var busy = bt[0], setBusy = bt[1];
+      var pst = React.useState(null);
+      var presetInfo = pst[0], setPresetInfo = pst[1];
       var sid = chipSessionId(props);
 
-      function load() {
+      function fetchState() {
         var url = sid ? '/api/mdisp/state?sessionId=' + encodeURIComponent(sid) : '/api/mdisp/state';
-        return fetch(url).then(function (r) { return r.json() }).then(function (v) {
+        return fetch(url).then(function (r) { return r.json() });
+      }
+
+      function load() {
+        return fetchState().then(function (v) {
           setMode(!!(v && v.mode));
-        }).catch(function () { setMode(null); });
+          var presets = (v && v.config && v.config.presets) || [];
+          var activeId = (v && v.config && v.config.activePreset) || '';
+          var hit = null;
+          for (var i = 0; i < presets.length; i++) { if (presets[i] && presets[i].id === activeId) hit = presets[i]; }
+          setPresetInfo({ presets: presets, activeId: activeId, activeName: hit ? hit.name : '' });
+        }).catch(function () { setMode(null); setPresetInfo(null); });
       }
 
       React.useEffect(function () {
         var alive = true;
-        var url = sid ? '/api/mdisp/state?sessionId=' + encodeURIComponent(sid) : '/api/mdisp/state';
-        fetch(url).then(function (r) { return r.json() }).then(function (v) {
-          if (alive) setMode(!!(v && v.mode));
-        }).catch(function () { if (alive) setMode(null); });
+        fetchState().then(function (v) {
+          if (!alive) return;
+          setMode(!!(v && v.mode));
+          var presets = (v && v.config && v.config.presets) || [];
+          var activeId = (v && v.config && v.config.activePreset) || '';
+          var hit = null;
+          for (var i = 0; i < presets.length; i++) { if (presets[i] && presets[i].id === activeId) hit = presets[i]; }
+          setPresetInfo({ presets: presets, activeId: activeId, activeName: hit ? hit.name : '' });
+        }).catch(function () { if (alive) { setMode(null); setPresetInfo(null); } });
         return function () { alive = false; };
       }, [sid]);
 
@@ -329,16 +428,53 @@ window.__ModuleLoader__.load({
           .then(function () { setBusy(false); });
       }
 
+      // 右半：轮换预设（无预设时点击提示去设置页创建）
+      function cyclePreset() {
+        if (!presetInfo || !presetInfo.presets || !presetInfo.presets.length) return;
+        setBusy(true);
+        var list = presetInfo.presets;
+        var idx = -1;
+        for (var i = 0; i < list.length; i++) { if (list[i].id === presetInfo.activeId) idx = i; }
+        var next = list[(idx + 1) % list.length];
+        fetch('/api/mdisp/preset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ op: 'apply', id: next.id }),
+        }).then(function (r) { return r.json() })
+          .then(function () { return load(); })
+          .catch(function () {})
+          .then(function () { setBusy(false); });
+      }
+
+      var presetLabel = presetInfo && presetInfo.activeName ? presetInfo.activeName : '默认';
+      var hasPresets = !!(presetInfo && presetInfo.presets && presetInfo.presets.length);
+
       var title = sid
         ? '模型分工模式（本会话）：点击' + (mode ? '关闭' : '开启') + '；也可用 /mdisp on|off'
         : '模型分工模式（全局）：点击' + (mode ? '关闭' : '开启') + '，对所有会话生效；单会话精确开关请用 /mdisp on|off';
-      return React.createElement('button', {
-        type: 'button',
-        className: 'mdisp-chip' + (mode ? ' on' : ''),
-        disabled: busy,
-        title: title,
-        onClick: toggle,
-      }, '分工' + (mode ? ' 开' : ' 关'));
+      var presetTitle = hasPresets
+        ? '当前预设：' + presetLabel + '；点击切换到下一个预设（设置 → 模型分工 可管理）'
+        : '尚无预设：在 设置 → 模型分工 里「另存当前配置为预设」后，这里可以快速切换';
+      return React.createElement('span', { style: { display: 'inline-flex', alignItems: 'stretch' } }, [
+        React.createElement('button', {
+          key: 'toggle',
+          type: 'button',
+          className: 'mdisp-chip' + (mode ? ' on' : ''),
+          disabled: busy,
+          title: title,
+          onClick: toggle,
+          style: { borderRadius: '999px 0 0 999px' },
+        }, '分工' + (mode ? ' 开' : ' 关')),
+        React.createElement('button', {
+          key: 'preset',
+          type: 'button',
+          className: 'mdisp-chip',
+          disabled: busy || !hasPresets,
+          title: presetTitle,
+          onClick: cyclePreset,
+          style: { borderRadius: '0 999px 999px 0', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+        }, presetLabel.length > 8 ? presetLabel.slice(0, 8) + '…' : presetLabel),
+      ]);
     }
 
     // ---------- 插件体：apply(ctx, config) ----------
