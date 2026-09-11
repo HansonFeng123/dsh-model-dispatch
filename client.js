@@ -7,6 +7,9 @@
  * 手写 bundle 遵循 DSH client-modules 协议：
  *   window.__ModuleLoader__.load({ id, factory })，
  *   factory(require) 返回 module.exports = { inject, apply }。
+ *
+ * v1.0.3：样式改为带 id 的幂等 <style> 注入（静态 bundle 标准做法，
+ * ctx.styles 需要声明 inject 才能访问，静态包拿不到）。
  */
 window.__ModuleLoader__.load({
   id: "dsh-model-dispatch",
@@ -340,9 +343,12 @@ window.__ModuleLoader__.load({
 
     // ---------- 插件体：apply(ctx, config) ----------
     function apply(ctx, config) {
-      // ---------- 样式注入（走宿主 styles 机制，不直接操作 DOM） ----------
-      if (ctx.styles && typeof ctx.styles.insert === 'function') {
-        ctx.styles.insert(
+      // ---------- 样式注入（静态 bundle 标准做法：一次性插入 <style>，幂等） ----------
+      var STYLE_ID = "dsh-model-dispatch-style";
+      if (!document.getElementById(STYLE_ID)) {
+        var style = document.createElement("style");
+        style.id = STYLE_ID;
+        style.textContent =
           '.mdisp-wrap{display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--dsw-alias-label-primary,#e8e8ee);}' +
           '.mdisp-card{background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.08));border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.3));border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}' +
           '.mdisp-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}' +
@@ -360,8 +366,8 @@ window.__ModuleLoader__.load({
           '.mdisp-chip{cursor:pointer;border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.45));border-radius:999px;padding:3px 10px;font-size:12px;line-height:1.4;background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.14));color:var(--dsw-alias-label-secondary,#a8a8b3);}' +
           '.mdisp-chip:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.22));}' +
           '.mdisp-chip.on{background:var(--dsw-alias-brand-primary,#3b82f6);color:var(--dsw-alias-brand-text,#fff);border-color:transparent;}' +
-          '.mdisp-chip[disabled]{opacity:.6;cursor:default;}'
-        );
+          '.mdisp-chip[disabled]{opacity:.6;cursor:default;}';
+        document.head.appendChild(style);
       }
 
       // ---------- Slot 注册 ----------

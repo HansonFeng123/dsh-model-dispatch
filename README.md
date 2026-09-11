@@ -221,13 +221,14 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh
 
 ## 版本历史
 
+- **v1.0.3**（2026-09-11）
+  - 修复浏览器端加载失败：`cannot get property "styles" without inject` —— 静态 client bundle 不能访问 `ctx.styles`（需声明 inject），样式改回带 id 的幂等 `<style>` DOM 注入（与 dsh-mood-light 相同的标准做法）
 - **v1.0.2**（2026-09-11）
   - 修复启动崩溃：`z.object(...).optional is not a function` —— schemastery 没有 `.optional()` 方法，fallback 字段改用 `.default({})` + 内部字段 `.default('')` 表达（空 provider 视为未配置，行为不变）
   - 保存配置时把「清空的回退」统一写成空对象 `{}`，与 schema 兼容
 - **v1.0.1**（2026-09-11）
   - 移除 `schemastery` 依赖 → 修复 `dsh plugin add` 的 EPERM 安装失败
   - 客户端补上 `apply` / `inject` 导出 → 修复「安装成功但设置页不显示」
-  - 样式改由 `ctx.styles.insert()` 注入，不再直接操作 DOM
   - 修复 Host 端 `tryAsk` 误引用 `exec.ctx` 的错误
   - README 新增完整的安装/卸载/故障排除说明
 - **v1.0.0**（2026-09-10）
