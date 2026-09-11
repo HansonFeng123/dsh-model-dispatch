@@ -178,7 +178,7 @@ dsh --profile web plugin list
 **排查顺序**：
 1. 确认**重启过 DSH Web**（安装后不重启不加载）
 2. 确认插件在 bundles 里：查看 `~/.dsh/profiles/web/package.json` 的 `dsh.profile.bundles` 数组是否有 `"dsh-model-dispatch"`（`dsh plugin add` 会自动加；手动复制方式需要自己加）
-3. 确认版本 ≥ v1.0.1（v1.0.0 的客户端缺 `apply` 导出，UI 不会出现）
+3. 确认版本 ≥ v1.0.2（v1.0.0 客户端缺 `apply` 导出；v1.0.1 的 schema 用了 schemastery 不存在的 `.optional()` 导致启动崩溃）
 4. 打开浏览器开发者工具（F12）看 Console 是否有 `dsh-model-dispatch` 相关报错
 
 ### 问题 4：配置保存后重启丢失
@@ -221,6 +221,9 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh
 
 ## 版本历史
 
+- **v1.0.2**（2026-09-11）
+  - 修复启动崩溃：`z.object(...).optional is not a function` —— schemastery 没有 `.optional()` 方法，fallback 字段改用 `.default({})` + 内部字段 `.default('')` 表达（空 provider 视为未配置，行为不变）
+  - 保存配置时把「清空的回退」统一写成空对象 `{}`，与 schema 兼容
 - **v1.0.1**（2026-09-11）
   - 移除 `schemastery` 依赖 → 修复 `dsh plugin add` 的 EPERM 安装失败
   - 客户端补上 `apply` / `inject` 导出 → 修复「安装成功但设置页不显示」

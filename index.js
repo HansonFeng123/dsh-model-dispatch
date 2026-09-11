@@ -35,9 +35,9 @@ export const Config = z.object({
     model: z.string(),
   })).default([]),
   fallback: z.object({
-    high: z.object({ provider: z.string(), model: z.string() }).optional(),
-    medium: z.object({ provider: z.string(), model: z.string() }).optional(),
-    low: z.object({ provider: z.string(), model: z.string() }).optional(),
+    high: z.object({ provider: z.string().default(''), model: z.string().default('') }).default({}),
+    medium: z.object({ provider: z.string().default(''), model: z.string().default('') }).default({}),
+    low: z.object({ provider: z.string().default(''), model: z.string().default('') }).default({}),
   }).default({}),
 })
 
@@ -779,9 +779,9 @@ export function apply(ctx, config = {}) {
                 .filter((r) => r && typeof r.provider === 'string' && r.provider && typeof r.model === 'string' && r.model)
                 .map((r) => ({ type: r.type, difficulty: r.difficulty, provider: r.provider, model: r.model })),
               fallback: {
-                high: cleanRoute(next.fallback && next.fallback.high),
-                medium: cleanRoute(next.fallback && next.fallback.medium),
-                low: cleanRoute(next.fallback && next.fallback.low),
+                high: cleanRoute(next.fallback && next.fallback.high) || {},
+                medium: cleanRoute(next.fallback && next.fallback.medium) || {},
+                low: cleanRoute(next.fallback && next.fallback.low) || {},
               },
             })
           }
