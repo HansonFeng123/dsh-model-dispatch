@@ -338,31 +338,8 @@ window.__ModuleLoader__.load({
       }, '分工' + (mode ? ' 开' : ' 关'));
     }
 
-    // ---------- 样式注入 ----------
-    var style = document.createElement('style');
-    style.textContent =
-      '.mdisp-wrap{display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--dsw-alias-label-primary,#e8e8ee);}' +
-      '.mdisp-card{background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.08));border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.3));border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}' +
-      '.mdisp-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}' +
-      '.mdisp-title{font-weight:600;font-size:14px;color:var(--dsw-alias-label-primary,#e8e8ee);}' +
-      '.mdisp-muted{color:var(--dsw-alias-label-secondary,#a8a8b3);font-size:12px;line-height:1.5;}' +
-      '.mdisp-table{width:100%;border-collapse:collapse;font-size:13px;}' +
-      '.mdisp-table th{background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.14));color:var(--dsw-alias-label-primary,#e8e8ee);}' +
-      '.mdisp-table th,.mdisp-table td{border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));padding:5px 8px;text-align:left;}' +
-      '.mdisp-select,.mdisp-input{background:var(--dsw-specific-input-major,var(--dsw-alias-bg-layer-2,#2a2a33));color:var(--dsw-alias-label-primary,#e8e8ee);border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.45));border-radius:6px;padding:4px 6px;font-size:12.5px;max-width:230px;}' +
-      '.mdisp-select option,.mdisp-select optgroup{background-color:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-2,#2a2a33));color:var(--dsw-alias-label-primary,#e8e8ee);}' +
-      '.mdisp-btn{cursor:pointer;border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.45));border-radius:8px;padding:5px 14px;background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.14));color:var(--dsw-alias-label-primary,#e8e8ee);font-size:12.5px;}' +
-      '.mdisp-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.22));}' +
-      '.mdisp-status{font-size:12px;color:var(--dsw-alias-label-secondary,#a8a8b3);}' +
-      '.mdisp-diag{margin:0;padding-left:18px;color:var(--dsw-alias-label-secondary,#a8a8b3);font-size:11.5px;line-height:1.6;}' +
-      '.mdisp-chip{cursor:pointer;border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.45));border-radius:999px;padding:3px 10px;font-size:12px;line-height:1.4;background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.14));color:var(--dsw-alias-label-secondary,#a8a8b3);}' +
-      '.mdisp-chip:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.22));}' +
-      '.mdisp-chip.on{background:var(--dsw-alias-brand-primary,#3b82f6);color:var(--dsw-alias-brand-text,#fff);border-color:transparent;}' +
-      '.mdisp-chip[disabled]{opacity:.6;cursor:default;}';
-    document.head.appendChild(style);
-
     // ---------- Slot 注册 ----------
-    var slots = require('slots');
+    var slots = ctx.get('slots')
     if (slots && typeof slots.inject === 'function') {
       slots.inject('settings.section', function () {
         return slots.register(
@@ -384,6 +361,30 @@ window.__ModuleLoader__.load({
           function (props) { return React.createElement(ModeChip, props); }
         );
       });
+    }
+
+    // ---------- 样式注入 ----------
+    if (ctx.styles && typeof ctx.styles.insert === 'function') {
+      ctx.styles.insert(
+        '.mdisp-wrap{display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--dsw-alias-label-primary,#e8e8ee);}' +
+        '.mdisp-card{background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.08));border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.3));border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}' +
+        '.mdisp-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}' +
+        '.mdisp-title{font-weight:600;font-size:14px;color:var(--dsw-alias-label-primary,#e8e8ee);}' +
+        '.mdisp-muted{color:var(--dsw-alias-label-secondary,#a8a8b3);font-size:12px;line-height:1.5;}' +
+        '.mdisp-table{width:100%;border-collapse:collapse;font-size:13px;}' +
+        '.mdisp-table th{background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.14));color:var(--dsw-alias-label-primary,#e8e8ee);}' +
+        '.mdisp-table th,.mdisp-table td{border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));padding:5px 8px;text-align:left;}' +
+        '.mdisp-select,.mdisp-input{background:var(--dsw-specific-input-major,var(--dsw-alias-bg-layer-2,#2a2a33));color:var(--dsw-alias-label-primary,#e8e8ee);border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.45));border-radius:6px;padding:4px 6px;font-size:12.5px;max-width:230px;}' +
+        '.mdisp-select option,.mdisp-select optgroup{background-color:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-2,#2a2a33));color:var(--dsw-alias-label-primary,#e8e8ee);}' +
+        '.mdisp-btn{cursor:pointer;border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.45));border-radius:8px;padding:5px 14px;background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.14));color:var(--dsw-alias-label-primary,#e8e8ee);font-size:12.5px;}' +
+        '.mdisp-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.22));}' +
+        '.mdisp-status{font-size:12px;color:var(--dsw-alias-label-secondary,#a8a8b3);}' +
+        '.mdisp-diag{margin:0;padding-left:18px;color:var(--dsw-alias-label-secondary,#a8a8b3);font-size:11.5px;line-height:1.6;}' +
+        '.mdisp-chip{cursor:pointer;border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.45));border-radius:999px;padding:3px 10px;font-size:12px;line-height:1.4;background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.14));color:var(--dsw-alias-label-secondary,#a8a8b3);}' +
+        '.mdisp-chip:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.22));}' +
+        '.mdisp-chip.on{background:var(--dsw-alias-brand-primary,#3b82f6);color:var(--dsw-alias-brand-text,#fff);border-color:transparent;}' +
+        '.mdisp-chip[disabled]{opacity:.6;cursor:default;}'
+      )
     }
 
     return module.exports;

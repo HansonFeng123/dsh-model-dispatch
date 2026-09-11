@@ -1,11 +1,11 @@
-// 验证 host.js 里的 validateConfig：直接从源文件提取函数本体来跑，避免复制造成的偏差。
+// 验证 index.js 里的 validateConfig：直接从源文件提取函数本体来跑，避免复制造成的偏差。
 // 运行：node model-dispatch/test-validate.mjs
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const source = readFileSync(join(here, 'host.js'), 'utf8');
+const source = readFileSync(join(here, 'index.js'), 'utf8');
 
 // 按大括号配对，从真实源码里抠出 validateConfig 的完整定义
 function extractFunction(text, signature) {

@@ -245,7 +245,7 @@ async function runOne(subagents, providerName, caps, u, exec) {
 }
 
 async function tryAsk(exec, ambiguous) {
-  const uq = exec.ctx.get('userQuestions')
+  const uq = ctx.get('userQuestions')
   if (uq === undefined || typeof uq.ask !== 'function') return null
   const picked = ambiguous.slice(0, 4)
   const questions = []
