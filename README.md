@@ -18,31 +18,70 @@
 ### 方式一：从 GitHub 安装（推荐）
 
 ```bash
-dsh plugin add github:HansonFeng123/dsh-model-dispatch
+dsh plugin --profile web add github:HansonFeng123/dsh-model-dispatch
 ```
+
+> 注意：命令必须带 `--profile web`（或你的 profile 名），否则会报 `error: required option '--profile <name>' not specified`。
+
+安装完成后**重启 DSH Web**（关闭再重新打开，或重新运行 `dsh web`），插件才会加载。
 
 ### 方式二：本地开发/测试
 
 把本目录放入 profile 的 `node_modules`：
 
+```powershell
+# Windows PowerShell：直接复制整个文件夹
+Copy-Item -Recurse -Force dsh-model-dispatch "$env:USERPROFILE\.dsh\profiles\web\node_modules\"
+```
+
 ```bash
-# 在 profile 目录下
-ln -s /path/to/dsh-model-dispatch node_modules/dsh-model-dispatch
-# 或直接把整个文件夹复制过去
+# macOS / Linux
 cp -r dsh-model-dispatch ~/.dsh/profiles/web/node_modules/
 ```
 
-然后重启 DSH Web（`pnpm run dev:web` 或重启 `dsh web`）。
+然后重启 DSH Web。
 
-### 方式三：通过 cordis.patch.yml 手动挂载
+> ⚠️ 手动复制方式还需要把 `"dsh-model-dispatch"` 加进 profile 的 `package.json` 的 `dsh.profile.bundles` 数组，否则 DSH 启动时不会加载它。推荐使用方式一，`dsh plugin add` 会自动完成这一步。
 
-在 profile 的 `cordis.patch.yml` 里添加：
+### 查看已安装的插件
 
-```yaml
-- insert:
-    - id: model-dispatch
-      name: dsh-model-dispatch
+```bash
+dsh --profile web plugin list
 ```
+
+## 卸载
+
+### 方法一：使用 dsh 命令（推荐）
+
+```bash
+dsh plugin --profile web remove dsh-model-dispatch
+```
+
+### 方法二：手动删除（命令报错时的兜底）
+
+1. 删除插件目录：
+
+```powershell
+# Windows PowerShell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh-model-dispatch"
+```
+
+```bash
+# macOS / Linux
+rm -rf ~/.dsh/profiles/web/node_modules/dsh-model-dispatch
+```
+
+2. 编辑 profile 的 `package.json`（`~/.dsh/profiles/web/package.json`）：
+   - 从 `dependencies` 里删除 `"dsh-model-dispatch": ...` 这一行
+   - 从 `dsh.profile.bundles` 数组里删除 `"dsh-model-dispatch"` 这一项
+
+3. 重启 DSH Web。
+
+### 清理残留配置（可选）
+
+插件保存的配置持久化在 profile 的 settings 文档里。想彻底清掉的话：
+
+- 编辑 `~/.dsh/profiles/web/settings.yaml`，删除 `model-dispatch` 命名空间那一节。
 
 ## 功能清单
 
@@ -95,7 +134,7 @@ cp -r dsh-model-dispatch ~/.dsh/profiles/web/node_modules/
 Host 侧的校验函数不依赖任何服务，可以直接测：
 
 ```bash
-node model-dispatch/test-validate.mjs
+node test-validate.mjs
 ```
 
 用探针实测到的真实目录作夹具，覆盖 11 个用例（含导致过线上故障的「回退选了模型」、以及各类必须被拦住的坏输入），全绿才算通过。当前结果：**11/11 PASS**。
@@ -105,6 +144,66 @@ node model-dispatch/test-validate.mjs
 - 启发式分类/歧义打分为关键词规则，无法覆盖全部场景；模型可在 `dispatch_task` 参数中显式指定 `type`/`difficulty`/`needsClarification` 纠正。
 - `dispatch_task` 为独占工具（`isConcurrencySafe` 未开启），同一会话内并发调用会排队。
 - 会话级模式开关不跨重启保留（符合预期）。
+
+## 常见问题与故障排除
+
+### 问题 1：`error: required option '--profile <name>' not specified`
+
+**原因**：`dsh plugin` 命令必须指定 profile。
+
+**解决**：命令里加上 `--profile web`：
+
+```bash
+dsh plugin --profile web add github:HansonFeng123/dsh-model-dispatch
+dsh plugin --profile web remove dsh-model-dispatch
+dsh --profile web plugin list
+```
+
+### 问题 2：`pnpm failed ... git-hosted plugins build on install via their prepare script`（EPERM）
+
+**原因**：插件包带有 `dependencies` 时，pnpm 安装 git 包会尝试跑构建脚本，被 Windows 权限拦住。本插件 v1.0.1 起已移除全部依赖，正常不会再触发。
+
+**解决**：
+1. 确认安装的是 v1.0.1+（`package.json` 无 `dependencies` 字段）
+2. 若仍失败，用「卸载 → 方法二：手动删除」清理后，改用「安装 → 方式二：本地复制」
+3. 若 pnpm 明确提示需要 allowBuilds 键，可在 profile 的 `pnpm-workspace.yaml` 里加：
+   ```yaml
+   allowBuilds:
+     - dsh-model-dispatch
+   ```
+   然后重试安装。
+
+### 问题 3：安装成功，但设置页看不到「模型分工」
+
+**排查顺序**：
+1. 确认**重启过 DSH Web**（安装后不重启不加载）
+2. 确认插件在 bundles 里：查看 `~/.dsh/profiles/web/package.json` 的 `dsh.profile.bundles` 数组是否有 `"dsh-model-dispatch"`（`dsh plugin add` 会自动加；手动复制方式需要自己加）
+3. 确认版本 ≥ v1.0.1（v1.0.0 的客户端缺 `apply` 导出，UI 不会出现）
+4. 打开浏览器开发者工具（F12）看 Console 是否有 `dsh-model-dispatch` 相关报错
+
+### 问题 4：配置保存后重启丢失
+
+**排查**：
+1. 确认插件加载正常（设置页能打开）
+2. 检查 `~/.dsh/profiles/web/settings.yaml` 里是否出现 `model-dispatch` 段；没有的话说明 settings 服务写入失败，看 DSH 启动日志里 `[model-dispatch]` 的报错
+
+### 问题 5：`dispatch_task` 工具没有出现在会话里
+
+**排查**：
+1. 确认插件已加载（设置 → 模型分工 页面能打开）
+2. 工具注册发生在插件启动时，重启 DSH Web 后新会话才可见
+3. 查看 DSH 启动日志有无 `model-dispatch` 相关错误
+
+### 彻底重置（插件导致 DSH 无法启动时的终极方案）
+
+如果插件导致 DSH 启动异常：
+
+```powershell
+# 1. 删插件目录
+Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh-model-dispatch"
+```
+
+然后编辑 `~/.dsh/profiles/web/package.json`，删掉 `dependencies` 和 `dsh.profile.bundles` 里的 `dsh-model-dispatch` 两处，重启即可恢复。插件的全部行为只来自上面这两处 + 可选的 settings.yaml 配置段，不碰任何 DSH 本体文件。
 
 ## Credits / 借鉴来源
 
@@ -119,3 +218,14 @@ node model-dispatch/test-validate.mjs
 - `client.js` — Client 半（设置页、运行卡、输入框「分工」药丸）
 - `cordis.patch.yml` — 自动挂载到 profile 的组成补丁
 - `test-validate.mjs` — 配置校验的纯逻辑回归测试
+
+## 版本历史
+
+- **v1.0.1**（2026-09-11）
+  - 移除 `schemastery` 依赖 → 修复 `dsh plugin add` 的 EPERM 安装失败
+  - 客户端补上 `apply` / `inject` 导出 → 修复「安装成功但设置页不显示」
+  - 样式改由 `ctx.styles.insert()` 注入，不再直接操作 DOM
+  - 修复 Host 端 `tryAsk` 误引用 `exec.ctx` 的错误
+  - README 新增完整的安装/卸载/故障排除说明
+- **v1.0.0**（2026-09-10）
+  - 初始版本：由动态 Cordis 插件改造为静态插件，配置持久化
