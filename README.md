@@ -162,7 +162,7 @@ Host 侧的校验函数不依赖任何服务，可以直接测：
 node test-validate.mjs
 ```
 
-用探针实测到的真实目录作夹具，覆盖 11 个用例（含导致过线上故障的「回退选了模型」、以及各类必须被拦住的坏输入），全绿才算通过。当前结果：**11/11 PASS**。
+用探针实测到的真实目录作夹具，覆盖 16 个用例（含导致过线上故障的「回退选了模型」、`type:null` 的畸形工具 schema，以及各类必须被拦住的坏输入），全绿才算通过。当前结果：**16/16 PASS**。
 
 ## 已知限制
 
@@ -246,6 +246,10 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh
 
 ## 版本历史
 
+- **v1.1.2**（2026-09-12）
+  - **修复 `deepseek-v4.1-flash` 报 `schema must be a JSON Schema of 'type: "object"', got 'type: null'`**：根因是 `parameters` 沿用了动态插件专有的「隐式属性映射 DSL」（顶层没有 `type:'object'` / `properties` 包装），而静态 `tools.register()` 不像 `harness.defineTool()` 那样做规范化，缺 `type` 的 schema 会被模型方校验成 `type: null` 而拒收
+  - 新增注册前 schema 自检 `assertJsonObjectSchema()`：顶层必须是 `type:'object'` + `properties`，且递归检查每个节点，畸形 schema 在本地就报错（附路径），不再等到模型请求时才失败
+  - 回归测试从 11 项扩到 **16 项**，新增 5 项 schema 形状用例（含本次故障形状）
 - **v1.1.1**（2026-09-11）
   - 修复 `dispatch_task` 参数 schema：静态 `tools.register` 走标准 JSON Schema（`type:'object'` + `properties` + `required` 数组），此前误用动态插件专有的隐式映射 DSL，导致模型看到畸形 schema、只能传 `{}` 并反复空调用（截图中的 `dispatch_task × 5` 重复即由此而来）
   - tasks 为空时返回带 JSON 示例的自纠错误（`error: INVALID_ARGUMENTS`），模型收到后知道如何正确传参，不再盲目重试

@@ -88,5 +88,48 @@ check('路由用未知任务类型', (c) => { c.routes = [{ type: 'zzz', difficu
 check('路由用未知难度', (c) => { c.routes = [{ type: 'coding', difficulty: 'ultra', provider: 'deepseek-official', model: 'deepseek-flash' }]; }, true, '未知难度');
 check('taskTypes 为空', (c) => { c.taskTypes = []; }, true, '至少保留一个任务类型');
 
+// ── 工具 schema 形状回归（本次 deepseek-v4.1-flash 故障） ──
+// 故障现象："Invalid schema for function 'dispatch_task': schema must be a JSON Schema
+// of 'type: "object"', got 'type: null'"。根因是 parameters 用了动态插件专有的
+// 隐式属性映射 DSL（顶层没有 type/properties 包装），静态 tools.register() 不做规范化。
+const assertSrc = extractFunction(source, 'function assertJsonObjectSchema(schema, label)');
+const assertJsonObjectSchema = new Function(assertSrc + '\nreturn assertJsonObjectSchema;')();
+
+function schemaCheck(name, schema, expectProblems) {
+  const problems = assertJsonObjectSchema(schema, 'x');
+  const ok = expectProblems ? problems.length > 0 : problems.length === 0;
+  if (!ok) failed++;
+  console.log((ok ? 'PASS' : 'FAIL') + '  ' + name);
+  if (!ok) console.log('      期望' + (expectProblems ? '报错' : '通过') + '，实际：' + (problems.length ? problems.join(' / ') : '无问题'));
+}
+
+// 正确的标准 JSON Schema（当前 index.js 用的形状）
+schemaCheck('标准 JSON Schema 通过', {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    tasks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { title: { type: 'string' }, difficulty: { type: 'string', enum: ['high', 'low'] } },
+        required: ['title'],
+      },
+    },
+  },
+  required: ['tasks'],
+}, false);
+
+// 故障形状：隐式属性映射 DSL（顶层无 type/properties）
+schemaCheck('隐式映射 DSL 必须被拦住（本次故障）', {
+  tasks: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { title: { type: 'string' } } } },
+  note: { type: 'string' },
+}, true);
+
+schemaCheck('顶层 type 不是 object 必须被拦住', { type: 'array', items: { type: 'string' } }, true);
+schemaCheck('required 不是数组必须被拦住', { type: 'object', properties: { a: { type: 'string' } }, required: true }, true);
+schemaCheck('嵌套节点缺 type 必须被拦住', { type: 'object', properties: { a: { description: 'x' } } }, true);
+
 console.log(failed === 0 ? '\n全部通过' : '\n失败 ' + failed + ' 项');
 process.exit(failed === 0 ? 0 : 1);

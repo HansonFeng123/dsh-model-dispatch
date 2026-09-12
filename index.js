@@ -68,6 +68,36 @@ function errText(e) {
   return e && e.message ? e.message : String(e)
 }
 
+// 静态 tools.register() 不会像动态 harness.defineTool() 那样把「隐式属性映射 DSL」
+// 规范化成标准 JSON Schema。若 parameters 顶层缺少 type:'object' / properties 包装，
+// 部分模型方（如 Command Code 的 deepseek-v4.1-flash）会直接报
+// "Invalid schema for function 'dispatch_task': schema must be a JSON Schema of
+//  'type: \"object\"', got 'type: null'"。这里在注册前自检，把问题挡在本地。
+function assertJsonObjectSchema(schema, label) {
+  const problems = []
+  const walk = (node, path) => {
+    if (node === null || typeof node !== 'object' || Array.isArray(node)) {
+      problems.push(path + ' 必须是对象')
+      return
+    }
+    if (!('type' in node) && !('oneOf' in node)) problems.push(path + ' 缺少 type（未套 properties 包装？）')
+    if ('type' in node && node.type !== null && typeof node.type !== 'string') {
+      problems.push(path + '.type 必须是字符串，实际 ' + JSON.stringify(node.type))
+    }
+    if ('properties' in node) {
+      if (typeof node.properties !== 'object' || node.properties === null) problems.push(path + '.properties 必须是对象')
+      else for (const k of Object.keys(node.properties)) walk(node.properties[k], path + '.properties.' + k)
+    }
+    if ('items' in node) walk(node.items, path + '.items')
+    if ('required' in node && !Array.isArray(node.required)) problems.push(path + '.required 必须是字符串数组')
+    if ('enum' in node && !Array.isArray(node.enum)) problems.push(path + '.enum 必须是数组')
+  }
+  walk(schema, label)
+  if (schema.type !== 'object') problems.push(label + ' 顶层 type 必须是 "object"，实际 ' + JSON.stringify(schema.type))
+  if (!schema.properties) problems.push(label + ' 顶层缺少 properties')
+  return problems
+}
+
 function clip(text, n) {
   if (!text) return ''
   const s = String(text)
@@ -540,7 +570,7 @@ export function apply(ctx, config = {}) {
   // ── 2. 注册 dispatch_task 工具 ──
   const tools = ctx.get('tools')
   if (tools !== undefined && typeof tools.register === 'function') {
-    tools.register({
+    const dispatchTool = {
       name: 'dispatch_task',
       description:
         '评估子任务的类型（architecture/coding/ui-design/bugfix/review/docs/testing/research 等）与难度（high/medium/low），' +
@@ -718,7 +748,16 @@ export function apply(ctx, config = {}) {
         if (noteParts.length) return { results, note: noteParts.join('；') }
         return { results }
       },
-    })
+    }
+
+    // 注册前自检：静态 tools.register() 不做 DSL 规范化，畸形 schema 会被模型方拒收。
+    // 提前在本地报错（附路径），比让整个会话轮次以 type:null 失败更容易定位。
+    const schemaProblems = assertJsonObjectSchema(dispatchTool.parameters, 'dispatch_task.parameters')
+      .concat(assertJsonObjectSchema(dispatchTool.output.schema, 'dispatch_task.output.schema'))
+    if (schemaProblems.length) {
+      throw new Error('[model-dispatch] 工具 schema 非法，拒绝注册：\n- ' + schemaProblems.join('\n- '))
+    }
+    tools.register(dispatchTool)
   }
 
   // ── 3. mode：systemPrompt 段 ──
