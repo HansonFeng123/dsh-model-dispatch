@@ -373,6 +373,81 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // 折叠阈值：输入框行（CSS 尺寸容器）可用宽度 <= 该值（px）时，
+    // 「分工」药丸折叠成一枚圆形图标按钮（与 DSH 自带模型按钮的折叠行为一致）。
+    var COLLAPSE_MAX_WIDTH = 480;
+
+    // 优先用 useLayoutEffect：在浏览器绘制前完成首次测量，避免「先展开再折叠」的闪动；
+    // 老版本/测试环境没有它时退回 useEffect。
+    var useIsoEffect = React.useLayoutEffect || React.useEffect;
+
+    // 折叠检测：从药丸自身向上找最近的 CSS 尺寸容器（DSH 输入框行
+    // .uV2eYG_row 声明了 container-type:inline-size），按它的可用宽度决定折叠。
+    // 不依赖 DSH 的哈希类名：靠 computedStyle.containerType 定位容器，
+    // 找不到容器时退回向上探测到的最高一层祖先；ResizeObserver 实时跟随面板/窗口宽度。
+    function useCollapsed(ref, maxWidth, ready) {
+      var st = React.useState(false);
+      var collapsed = st[0], setCollapsed = st[1];
+      useIsoEffect(function () {
+        if (!ready) { setCollapsed(false); return undefined; }
+        var node = ref.current;
+        if (!node || typeof window === 'undefined') return undefined;
+        var target = null;
+        var last = null;
+        var el = node.parentElement;
+        for (var i = 0; el && i < 8; i++) {
+          last = el;
+          var cs = null;
+          try { cs = window.getComputedStyle(el); } catch (err) { cs = null; }
+          var ct = cs && cs.containerType;
+          if (ct && ct !== 'normal') { target = el; break; }
+          el = el.parentElement;
+        }
+        // 找不到尺寸容器时，退回向上探测到的最高一层祖先（通常是输入框行本身）。
+        if (!target) target = last || node.parentElement;
+        if (!target) return undefined;
+        function measure() {
+          var w = target.clientWidth || Math.round(target.getBoundingClientRect().width) || 0;
+          if (w > 0) setCollapsed(w <= maxWidth);
+        }
+        measure();
+        var ro = null;
+        if (typeof ResizeObserver !== 'undefined') {
+          ro = new ResizeObserver(measure);
+          ro.observe(target);
+        }
+        window.addEventListener('resize', measure);
+        return function () {
+          if (ro) ro.disconnect();
+          window.removeEventListener('resize', measure);
+        };
+      }, [maxWidth, ready]);
+      return collapsed;
+    }
+
+    // 折叠态图标：一进多出的分派（fan-out）隐喻 —— 线宽/颜色全部用 currentColor，
+    // 因此自动继承药丸开启/关闭两态的文字颜色。
+    function DispatchIcon() {
+      return React.createElement('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true', focusable: 'false' }, [
+        React.createElement('path', { key: 'a', d: 'M3.8 8h3.6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
+        React.createElement('path', { key: 'b', d: 'M7.4 8c2 0 2.6-3.9 4.6-3.9', fill: 'none', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
+        React.createElement('path', { key: 'c', d: 'M7.4 8c2 0 2.6 3.9 4.6 3.9', fill: 'none', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
+        React.createElement('circle', { key: 'd', cx: 2.2, cy: 8, r: 1.6, fill: 'currentColor' }),
+        React.createElement('circle', { key: 'e', cx: 13.4, cy: 4.1, r: 1.6, fill: 'currentColor' }),
+        React.createElement('circle', { key: 'f', cx: 13.4, cy: 11.9, r: 1.6, fill: 'currentColor' }),
+      ]);
+    }
+
+    // 预设图标：双向切换箭头（⇄）—— 表示「切换到下一个预设」。
+    function PresetIcon() {
+      return React.createElement('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true', focusable: 'false' }, [
+        React.createElement('path', { key: 'a', d: 'M3 6h9.2', fill: 'none', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
+        React.createElement('path', { key: 'b', d: 'M9.8 3.4 12.6 6l-2.8 2.6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+        React.createElement('path', { key: 'c', d: 'M13 10H3.8', fill: 'none', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
+        React.createElement('path', { key: 'd', d: 'M6.2 7.4 3.4 10l2.8 2.6', fill: 'none', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+      ]);
+    }
+
     function ModeChip(props) {
       var st = React.useState(null);
       var mode = st[0], setMode = st[1];
@@ -380,6 +455,9 @@ window.__ModuleLoader__.load({
       var busy = bt[0], setBusy = bt[1];
       var pst = React.useState(null);
       var presetInfo = pst[0], setPresetInfo = pst[1];
+      var slotRef = React.useRef(null);
+      // 注意：useCollapsed 必须在任何提前 return 之前调用（Hooks 规则）。
+      var collapsed = useCollapsed(slotRef, COLLAPSE_MAX_WIDTH, mode !== null);
       var sid = chipSessionId(props);
 
       function fetchState() {
@@ -455,7 +533,34 @@ window.__ModuleLoader__.load({
       var presetTitle = hasPresets
         ? '当前预设：' + presetLabel + '；点击切换到下一个预设（设置 → 模型分工 可管理）'
         : '尚无预设：在 设置 → 模型分工 里「另存当前配置为预设」后，这里可以快速切换';
-      return React.createElement('span', { style: { display: 'inline-flex', alignItems: 'stretch' } }, [
+
+      if (collapsed) {
+        // 折叠态：单个圆形按钮。图标 = 状态（开启=实心圆点，关闭=空心圆点），
+        // 配色复用展开态的 .mdisp-chip / .mdisp-chip.on。
+        return React.createElement('span', { ref: slotRef, className: 'mdisp-slot' }, [
+          React.createElement('button', {
+            key: 'toggle',
+            type: 'button',
+            className: 'mdisp-chip mdisp-chip-compact mdisp-chip-icon' + (mode ? ' on' : ''),
+            disabled: busy,
+            title: title,
+            'aria-label': '模型分工：' + (mode ? '已开启' : '已关闭'),
+            'aria-pressed': mode ? 'true' : 'false',
+            onClick: toggle,
+          }, React.createElement(DispatchIcon)),
+          hasPresets ? React.createElement('button', {
+            key: 'preset',
+            type: 'button',
+            className: 'mdisp-chip mdisp-chip-compact mdisp-chip-icon',
+            disabled: busy,
+            title: presetTitle,
+            'aria-label': '切换模型分工预设（当前：' + presetLabel + '）',
+            onClick: cyclePreset,
+          }, React.createElement(PresetIcon)) : null,
+        ]);
+      }
+
+      return React.createElement('span', { ref: slotRef, className: 'mdisp-slot' }, [
         React.createElement('button', {
           key: 'toggle',
           type: 'button',
@@ -502,7 +607,16 @@ window.__ModuleLoader__.load({
           '.mdisp-chip{cursor:pointer;border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.45));border-radius:999px;padding:3px 10px;font-size:12px;line-height:1.4;background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.14));color:var(--dsw-alias-label-secondary,#a8a8b3);}' +
           '.mdisp-chip:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.22));}' +
           '.mdisp-chip.on{background:var(--dsw-alias-brand-primary,#3b82f6);color:var(--dsw-alias-brand-text,#fff);border-color:transparent;}' +
-          '.mdisp-chip[disabled]{opacity:.6;cursor:default;}';
+          '.mdisp-chip[disabled]{opacity:.6;cursor:default;}' +
+          // 药丸插槽：展开态两枚按钮无缝拼接；折叠态（内含 compact 按钮）之间留 6px 间距
+          '.mdisp-slot{display:inline-flex;align-items:center;min-width:0;}' +
+          '.mdisp-slot:has(.mdisp-chip-compact){gap:6px;}' +
+          // 折叠态：圆形按钮（28px，与 DSH 输入框的圆形按钮同尺寸），配色仍走 .mdisp-chip / .mdisp-chip.on
+          '.mdisp-chip.mdisp-chip-compact{border-radius:999px;width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;}' +
+          '.mdisp-chip.mdisp-chip-icon svg{width:16px;height:16px;display:block;}';
+        // 折叠检测由 ModeChip 里的 ResizeObserver 驱动（见 useCollapsed）：
+        // 向上找到 DSH 输入框行（container-type:inline-size 的 .uV2eYG_row），
+        // 其可用宽度 <= COLLAPSE_MAX_WIDTH 时折叠成圆形按钮。
         document.head.appendChild(style);
       }
 

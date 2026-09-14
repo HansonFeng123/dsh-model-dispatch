@@ -88,7 +88,7 @@ rm -rf ~/.dsh/profiles/web/node_modules/dsh-model-dispatch
 | 能力 | 实现位置 |
 | --- | --- |
 | 模式（mode） | Host：`systemPrompt.section('model-dispatch:policy')`，模式开启时向每步请求注入分工指导（含当前路由表）；关闭时输出空字符串 |
-| 会话级开关（可见） | Client：`conversation.input.left` —— 输入框工具栏左侧的「分工 开/关」药丸（additive 槽位，replaceRisk: none） |
+| 会话级开关（可见） | Client：`conversation.input.left` —— 输入框工具栏左侧的「分工 开/关」药丸（additive 槽位，replaceRisk: none）；输入框变窄时自动折叠为圆形图标按钮 |
 | 会话级开关（命令） | `/mdisp on` / `/mdisp off`；全局默认值在设置页 |
 | 设置板块 | Client：`settings.section` 新增「模型分工」页——类型×难度矩阵、通用回退、并行数、澄清开关、自定义类型 |
 | 派发工具 | Host：`dispatch_task`（模型可见，经 `tools.register` 注册） |
@@ -240,12 +240,20 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh
 ## 源码
 
 - `index.js` — Host 半（工具、模式、命令、HTTP 路由、持久化）
-- `client.js` — Client 半（设置页、运行卡、输入框「分工」药丸）
+- `client.js` — Client 半（设置页、运行卡、输入框「分工」药丸，含窄宽度自适应折叠）
 - `cordis.patch.yml` — 自动挂载到 profile 的组成补丁
 - `test-validate.mjs` — 配置校验的纯逻辑回归测试
+- `test-collapse.mjs` — 药丸折叠行为的回归测试（迷你 React 运行时 + 假 DOM，`node test-collapse.mjs`）
 
 ## 版本历史
 
+- **v1.1.3**（2026-09-14）
+  - **「分工」药丸支持自适应折叠**：输入框可用宽度变窄时自动折叠为一枚圆形图标按钮（28px，与 DSH 自带模型选择按钮的折叠尺寸一致），宽度恢复后自动展开回「分工 开/关 + 预设名」文字药丸
+  - 折叠检测不依赖 DSH 的哈希类名：向上查找最近的 CSS 尺寸容器（DSH 输入框行 `.uV2eYG_row` 声明了 `container-type:inline-size`，用法与自带模型按钮的 `@container (width<=360px)` 同源），用 `ResizeObserver` 实时跟随；找不到容器时退回父元素宽度，`ResizeObserver` 不可用时退回 `window` resize 事件
+  - 折叠态图标为一进多出的「分派（fan-out）」图形，全部用 `currentColor`，因此自动继承开启/关闭两态原有的配色（开启为品牌蓝底白字，关闭为原底色次级文字色），未新增任何配色变量
+  - 测量优先走 `useLayoutEffect`（绘制前完成，无「先展开再折叠」的闪动），环境不支持时退回 `useEffect`
+  - 折叠态保留 `title` 与 `aria-label`/`aria-pressed`（悬停仍能看到「当前预设：xxx」等完整提示）；存在预设时折叠为两枚圆形按钮（开关 + 轮换预设），无预设时只保留开关一枚
+  - 新增 `test-collapse.mjs`：自带迷你 React Hooks 运行时 + 假 DOM 直接加载真实 `client.js` 并断言折叠行为，**42/42 PASS**
 - **v1.1.2**（2026-09-12）
   - **修复 `deepseek-v4.1-flash` 报 `schema must be a JSON Schema of 'type: "object"', got 'type: null'`**：根因是 `parameters` 沿用了动态插件专有的「隐式属性映射 DSL」（顶层没有 `type:'object'` / `properties` 包装），而静态 `tools.register()` 不像 `harness.defineTool()` 那样做规范化，缺 `type` 的 schema 会被模型方校验成 `type: null` 而拒收
   - 新增注册前 schema 自检 `assertJsonObjectSchema()`：顶层必须是 `type:'object'` + `properties`，且递归检查每个节点，畸形 schema 在本地就报错（附路径），不再等到模型请求时才失败

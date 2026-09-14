@@ -1,6 +1,6 @@
 {
   "name": "dsh-model-dispatch",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "模型分工（Model Dispatch）— 评估子任务的类型与难度，按用户配置把任务路由到不同模型并通过 spawn 子代理执行。独立任务并行、重复任务合并、歧义任务先向用户确认。DSH 静态插件，配置持久化。",
   "type": "module",
   "main": "index.js",
